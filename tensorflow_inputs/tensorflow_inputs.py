@@ -38,6 +38,21 @@ def video_file(
         prefetch_gpu=prefetch_gpu, tee_cpu=tee_cpu, frame_preproc_fn=frame_preproc_fn)
 
 
+def video_files(
+        video_paths, extra_data=None, internal_queue_size=None, batch_size=64, prefetch_gpu=1,
+        tee_cpu=False, video_slice=slice(None), frame_preproc_fn=None, frame_preproc_size_fn=None):
+    width, height = video_extents(video_paths[0])
+    if frame_preproc_size_fn is not None:
+        width, height = frame_preproc_size_fn(width, height)
+    return image_dataset_from_queue(
+        concat_frame_gen, args=(video_paths, video_slice), imshape=[height, width],
+        extra_data=extra_data, internal_queue_size=internal_queue_size, batch_size=batch_size,
+        prefetch_gpu=prefetch_gpu, tee_cpu=tee_cpu, frame_preproc_fn=frame_preproc_fn,
+        output_signature=(
+            tf.TensorSpec(dtype=tf.uint8, shape=[height, width, 3]),
+            tf.TensorSpec(dtype=tf.string, shape=[])))
+
+
 def webcam(
         capture_id=0, extra_data=None, internal_queue_size=None, batch_size=64, prefetch_gpu=1,
         tee_cpu=True):
@@ -98,6 +113,10 @@ def interleaved_frame_gen(video_paths, video_slice):
     video_readers = [sliced_reader(p, video_slice) for p in video_paths]
     yield from roundrobin(video_readers, [1] * len(video_readers))
 
+def concat_frame_gen(video_paths, video_slice):
+    for p in video_paths:
+        for frame in sliced_reader(p, video_slice):
+            yield frame, p
 
 def images_from_paths_gen(paths):
     for path in paths:
@@ -106,7 +125,7 @@ def images_from_paths_gen(paths):
 
 def image_dataset_from_queue(
         generator_fn, imshape, extra_data, internal_queue_size=None, batch_size=64, prefetch_gpu=1,
-        tee_cpu=False, frame_preproc_fn=None, args=None, kwargs=None):
+        tee_cpu=False, frame_preproc_fn=None, args=None, kwargs=None, output_signature=None):
     if internal_queue_size is None:
         internal_queue_size = batch_size * 2 if batch_size is not None else 64
 
@@ -127,7 +146,9 @@ def image_dataset_from_queue(
     else:
         frames2 = itertools.repeat(None)
 
-    ds = tf.data.Dataset.from_generator(lambda: frames, tf.uint8, [*imshape[:2], 3])
+    if output_signature is None:
+        output_signature = tf.TensorSpec(dtype=tf.uint8, shape=[*imshape[:2], 3])
+    ds = tf.data.Dataset.from_generator(lambda: frames, output_signature=output_signature)
 
     if extra_data is not None:
         ds = tf.data.Dataset.zip((ds, extra_data))
