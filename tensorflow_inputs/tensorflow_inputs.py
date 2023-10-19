@@ -20,7 +20,7 @@ def image_files(
             width, height = frame_preproc_size_fn(width, height)
 
     return image_dataset_from_queue(
-        images_from_paths_gen, args=(image_paths,), imshape=[width, height], extra_data=extra_data,
+        images_from_paths_gen, args=(image_paths,), imshape=[height, width], extra_data=extra_data,
         internal_queue_size=internal_queue_size, batch_size=batch_size, prefetch_gpu=prefetch_gpu,
         tee_cpu=tee_cpu, frame_preproc_fn=frame_preproc_fn)
 
